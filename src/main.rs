@@ -104,7 +104,7 @@ fn get_or_prompt_passphrase(username: &str) -> String {
 }
 
 fn load_config(passphrase: &str) -> Config {
-    let home_dir = env::var("HOME").expect("Unable to determine home directory");
+    let home_dir = dirs::home_dir().expect("Unable to determine home directory");
     let config_path = PathBuf::from(home_dir).join(CONFIG_FILE);
 
     if !config_path.exists() {
