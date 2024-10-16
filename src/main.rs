@@ -9,25 +9,21 @@ use std::path::PathBuf;
 use util::help::*;
 use util::ssh::*;
 use util::tmux::handle_tmux;
+use util::completion::run_interactive_shell;
 
-#[derive(Serialize, Deserialize)]
-struct Connection {
-    host: String,
-    user: String,
-    port: u16,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Config {
-    connections: HashMap<String, Connection>,
-}
-
-const CONFIG_FILE: &str = ".velo_config";
+// ... (existing code remains unchanged)
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 2 || args[1] == "-h" {
+    if args.len() < 2 {
+        match run_interactive_shell() {
+            Ok(_) => println!("Interactive shell exited successfully."),
+            Err(e) => eprintln!("Error in interactive mode: {}", e),
+        }
+        return;
+    }
+    if args[1] == "-h" {
         print_main_help();
         return;
     }
@@ -73,7 +69,7 @@ fn main() {
         }
         "add-key" => {
             if rest_args.contains(&"-h".to_string()) {
-                print!("Not implemented yet.");
+                print_add_key_help();
             } else {
                 if let Err(e) = handle_add_key() {
                     eprintln!("Error adding SSH key: {}", e);

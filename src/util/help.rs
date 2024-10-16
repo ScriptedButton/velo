@@ -40,3 +40,8 @@ pub fn print_remove_help() {
     println!("Usage: velo remove <connection_name>");
     println!("Remove a stored SSH connection.");
 }
+
+pub fn print_add_key_help() {
+    println!("Usage: velo add-key");
+    println!("Add an SSH private key to the keyring for automatic login.");
+}

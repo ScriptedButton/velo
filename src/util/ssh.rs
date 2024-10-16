@@ -33,12 +33,36 @@ impl SSHConfig {
     }
 
     pub fn remove_connection(&mut self, name: &str) -> std::io::Result<bool> {
-        let pattern = format!(r"(?m)^Host {}$.*?(?=^Host|\z)", regex::escape(name));
-        let re = Regex::new(&pattern).unwrap();
+        let host_pattern = format!(r"(?m)^Host\s+{}\s*$", regex::escape(name));
+        let re = Regex::new(&host_pattern).unwrap();
+
         if re.is_match(&self.content) {
-            self.content = re.replace_all(&self.content, "").into_owned();
-            self.save()?;
-            Ok(true)
+            let mut new_content = String::new();
+            let mut skip_block = false;
+            let mut removed = false;
+
+            for line in self.content.lines() {
+                if re.is_match(line) {
+                    skip_block = true;
+                    removed = true;
+                    continue;
+                }
+                if skip_block {
+                    if line.trim().starts_with("Host ") {
+                        skip_block = false;
+                    } else {
+                        continue;
+                    }
+                }
+                new_content.push_str(line);
+                new_content.push('\n');
+            }
+
+            if removed {
+                self.content = new_content;
+                self.save()?;
+            }
+            Ok(removed)
         } else {
             Ok(false)
         }
