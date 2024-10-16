@@ -323,7 +323,7 @@ pub fn handle_add_key() -> std::io::Result<()> {
 }
 
 
-fn ensure_ssh_agent_running() {
+pub fn ensure_ssh_agent_running() {
     let output = std::process::Command::new("ssh-add")
         .arg("-l")
         .output()
