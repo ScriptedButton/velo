@@ -131,7 +131,7 @@ fn load_config(passphrase: &str) -> Config {
 }
 
 fn save_config(config: &Config, passphrase: &str) {
-    let home_dir = env::var("HOME").expect("Unable to determine home directory");
+    let home_dir = dirs::home_dir().expect("Unable to determine home directory");
     let config_path = PathBuf::from(home_dir).join(CONFIG_FILE);
 
     let plaintext = serde_json::to_vec(config).expect("Unable to serialize config");
