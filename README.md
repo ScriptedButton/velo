@@ -22,7 +22,7 @@ Velo is a command-line interface (CLI) tool designed to simplify and streamline 
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/velo.git
+   git clone https://github.com/ScriptedButton/velo.git
    cd velo
    ```
 
