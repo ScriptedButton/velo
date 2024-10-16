@@ -1,7 +1,8 @@
 use crate::{
-    get_password, load_config, load_config_with_password, prompt_yes_no, read_password_from_tty,
-    save_config_with_password, Connection,
+    get_or_prompt_passphrase, load_config, prompt_yes_no, read_password_from_tty, save_config,
+    Connection,
 };
+use std::io::{stdin, Write};
 use std::process::Command;
 
 pub fn handle_ssh(args: &[String]) {
@@ -11,8 +12,9 @@ pub fn handle_ssh(args: &[String]) {
     }
 
     let connection_name = &args[0];
-    let config_password = get_password("Enter password to decrypt config: ");
-    let config = load_config_with_password(&config_password);
+    let username = whoami::username();
+    let passphrase = get_or_prompt_passphrase(&username);
+    let config = load_config(&passphrase);
 
     match config.connections.get(connection_name) {
         Some(conn) => {
@@ -40,15 +42,12 @@ pub fn handle_ssh(args: &[String]) {
             if Command::new("tmux").arg("-V").output().is_ok() {
                 println!("Launching ssh in a split tmux pane...");
 
-                // Choose whether to split horizontally or vertically
-                // Example: Split horizontally with the '-h' option or vertically with '-v'
                 let split_option = if prompt_yes_no("Do you want to split horizontally? (y/n): ") {
                     "-h"
                 } else {
                     "-v"
                 };
 
-                // Split the current tmux window and run the ssh command in the new pane
                 let status = Command::new("tmux")
                     .arg("split-window")
                     .arg(split_option)
@@ -78,63 +77,59 @@ pub fn handle_ssh(args: &[String]) {
     }
 }
 
-pub fn handle_add_connection(args: &[String]) {
-    if args.len() != 4 {
-        println!("Usage: velo add <name> <host> <user> <port>");
+pub fn handle_add_connection(args: &[String], passphrase: &str) {
+    if args.len() != 3 {
+        println!("Usage: velo add <name> <host> <user>");
         return;
     }
 
     let name = &args[0];
     let host = &args[1];
     let user = &args[2];
-    let port = args[3].parse::<u16>().expect("Invalid port number");
 
-    let store_password = prompt_yes_no("Do you want to store the SSH password? (y/n): ");
+    let mut config = load_config(passphrase);
 
-    let password = if store_password {
-        Some(read_password_from_tty("Enter SSH password: ").expect("Failed to read password"))
-    } else {
-        None
+    if config.connections.contains_key(name) {
+        println!("Connection '{}' already exists.", name);
+        return;
+    }
+
+    let port = prompt_port();
+    let password = prompt_password();
+
+    let connection = Connection {
+        host: host.to_string(),
+        user: user.to_string(),
+        port,
+        password,
     };
 
-    let config_password = get_password("Enter password for config encryption: ");
-    let mut config = load_config_with_password(&config_password);
+    config.connections.insert(name.to_string(), connection);
+    save_config(&config, passphrase);
 
-    config.connections.insert(
-        name.to_string(),
-        Connection {
-            host: host.to_string(),
-            user: user.to_string(),
-            port,
-            password,
-        },
-    );
-
-    save_config_with_password(&config, &config_password);
-    println!("Connection '{}' added successfully", name);
+    println!("Connection '{}' added successfully.", name);
 }
 
-pub fn handle_remove_connection(args: &[String]) {
+pub fn handle_remove_connection(args: &[String], passphrase: &str) {
     if args.is_empty() {
         println!("Usage: velo remove <connection_name>");
         return;
     }
 
     let connection_name = &args[0];
-    let password = get_password("Enter password: ");
-    let mut config = load_config_with_password(&password);
+    let mut config = load_config(passphrase);
 
     match config.connections.remove(connection_name) {
         Some(_) => {
-            save_config_with_password(&config, &password);
+            save_config(&config, passphrase);
             println!("Connection '{}' removed successfully", connection_name);
         }
         None => println!("Connection '{}' not found", connection_name),
     }
 }
 
-pub fn handle_list_connections() {
-    let config = load_config();
+pub fn handle_list_connections(passphrase: &str) {
+    let config = load_config(passphrase);
     if config.connections.is_empty() {
         println!("No connections stored.");
     } else {
@@ -145,5 +140,32 @@ pub fn handle_list_connections() {
                 println!("  (Password stored)");
             }
         }
+    }
+}
+
+fn prompt_port() -> u16 {
+    loop {
+        print!("Enter port (default: 22): ");
+        std::io::stdout().flush().unwrap();
+        let mut input = String::new();
+        stdin().read_line(&mut input).expect("Failed to read input");
+        let input = input.trim();
+
+        if input.is_empty() {
+            return 22;
+        }
+
+        match input.parse() {
+            Ok(port) => return port,
+            Err(_) => println!("Invalid port number. Please try again."),
+        }
+    }
+}
+
+fn prompt_password() -> Option<String> {
+    if prompt_yes_no("Do you want to save the password? (y/n): ") {
+        Some(read_password_from_tty("Enter password: ").unwrap())
+    } else {
+        None
     }
 }
