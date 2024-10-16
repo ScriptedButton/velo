@@ -3,6 +3,7 @@ pub fn print_main_help() {
     println!("Available commands:");
     println!("  ssh      Connect via SSH");
     println!("  tmux     Manage tmux sessions");
+    println!("  zellij   Manage Zellij sessions");
     println!("  add      Add a new SSH connection");
     println!("  list     List all SSH connections");
     println!("  remove   Remove an SSH connection");
@@ -23,6 +24,15 @@ pub fn print_ssh_help() {
     println!("Usage: velo ssh <connection_name>");
     println!("Connect to a stored SSH connection.");
     println!("You can manage SSH connections using 'velo add', 'velo remove', or 'velo list'.");
+}
+
+pub fn print_zellij_help() {
+    println!("Usage: velo zellij <subcommand> [args...]");
+    println!("Available subcommands:");
+    println!("  new <session_name>     Create a new Zellij session");
+    println!("  list                   List active Zellij sessions");
+    println!("  attach <session_name>  Attach to a Zellij session");
+    println!("  kill <session_name>    Kill a Zellij session");
 }
 
 pub fn print_add_help() {

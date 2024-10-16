@@ -14,6 +14,7 @@ use std::io::Error as IoError;
 pub struct VeloCompleter {
     commands: Vec<String>,
     tmux_subcommands: Vec<String>,
+    zellij_subcommands: Vec<String>,
 }
 
 impl VeloCompleter {
@@ -26,11 +27,18 @@ impl VeloCompleter {
                 "list".to_string(),
                 "remove".to_string(),
                 "add-key".to_string(),
+                "zellij".to_string(), 
             ],
             tmux_subcommands: vec![
                 "new".to_string(),
                 "list".to_string(),
                 "ls".to_string(),
+                "attach".to_string(),
+                "kill".to_string(),
+            ],
+            zellij_subcommands: vec![ // Add this block
+                "new".to_string(),
+                "list".to_string(),
                 "attach".to_string(),
                 "kill".to_string(),
             ],
@@ -82,6 +90,16 @@ impl Completer for VeloCompleter {
         } else if words[0] == "tmux" && words.len() == 2 {
             // Complete tmux subcommands
             for subcommand in &self.tmux_subcommands {
+                if subcommand.starts_with(word_to_complete) {
+                    completions.push(Pair {
+                        display: subcommand.clone(),
+                        replacement: subcommand.clone(),
+                    });
+                }
+            }
+        } else if words[0] == "zellij" && words.len() == 2 { // Add this block
+            // Complete zellij subcommands
+            for subcommand in &self.zellij_subcommands {
                 if subcommand.starts_with(word_to_complete) {
                     completions.push(Pair {
                         display: subcommand.clone(),
