@@ -30,8 +30,11 @@ impl SSHConfig {
     pub fn add_connection(&mut self, name: &str, host: &str, user: &str, port: u16) -> std::io::Result<()> {
         let entry = format!("\nHost {}\n    HostName {}\n    User {}\n    Port {}\n", name, host, user, port);
         self.content.push_str(&entry);
-        self.save()
+        self.save()?;
+        println!("Connection '{}' added successfully.", name);
+        Ok(())
     }
+
 
     pub fn remove_connection(&mut self, name: &str) -> std::io::Result<bool> {
         let host_pattern = format!(r"(?m)^Host\s+{}\s*$", regex::escape(name));
@@ -75,6 +78,7 @@ impl SSHConfig {
             .map(|cap| cap[1].to_string())
             .collect()
     }
+
 
     pub fn add_key(&mut self) -> std::io::Result<()> {
         let ssh_dir = dirs::home_dir().unwrap().join(".ssh");
@@ -133,100 +137,96 @@ impl SSHConfig {
         }
 
         // Add key to ssh-agent
-        if cfg!(target_os = "macos") {
-            Command::new("ssh-add")
-                .arg("--apple-use-keychain")
-                .arg(&private_key_path)
-                .status()?;
-            println!("SSH key added to ssh-agent and passphrase stored in Apple Keychain.");
-        } else {
-            Command::new("ssh-add")
-                .arg(&private_key_path)
-                .status()?;
-            println!("SSH key added to ssh-agent.");
-        }
+        self.add_key_to_agent(&private_key_path)?;
+
+        // Ask for the SSH connection to add the key to
+        println!("Enter the name of the SSH connection to add this key to:");
+        let mut connection_name = String::new();
+        stdin().read_line(&mut connection_name)?;
+        let connection_name = connection_name.trim();
 
         // Update SSH config file
-        self.update_config_with_key(&private_key_path)?;
+        self.update_config_with_key(connection_name, &private_key_path)?;
 
         Ok(())
     }
 
-    fn update_config_with_key(&mut self, key_path: &Path) -> std::io::Result<()> {
-        const START_MARKER: &str = "### SSH Configurations Managed by Script Start ###";
-        const END_MARKER: &str = "### SSH Configurations Managed by Script End ###";
-
-        // Check if delimiters exist, if not add them
-        if !self.content.contains(START_MARKER) {
-            self.content.push_str(&format!("\n{}\n{}\n", START_MARKER, END_MARKER));
-        }
-
-        // Split the content into sections
-        let mut sections: Vec<&str> = self.content.split(START_MARKER).collect();
-        let managed_section = sections.pop().unwrap().split(END_MARKER).next().unwrap();
-
-        // Parse existing groups and hosts
-        let mut groups: Vec<(String, Vec<String>)> = Vec::new();
-        let mut current_group = String::new();
-        let mut current_hosts = Vec::new();
-
-        for line in managed_section.lines() {
-            if line.starts_with("# Group:") {
-                if !current_group.is_empty() {
-                    groups.push((current_group, current_hosts));
-                    current_hosts = Vec::new();
-                }
-                current_group = line.trim_start_matches("# Group:").trim().to_string();
-            } else if line.trim().starts_with("Host ") {
-                current_hosts.push(line.trim().to_string());
-            }
-        }
-        if !current_group.is_empty() {
-            groups.push((current_group, current_hosts));
-        }
-
-        // Prompt for group information
-        println!("Enter the group code (e.g., '470'):");
-        let mut group_code = String::new();
-        stdin().read_line(&mut group_code)?;
-        let group_code = group_code.trim();
-
-        println!("Enter the group name (e.g., 'CNIT 470 - Incident Response'):");
-        let mut group_name = String::new();
-        stdin().read_line(&mut group_name)?;
-        let group_name = group_name.trim();
-
-        // Find or create the group
-        let group_index = groups.iter().position(|(name, _)| name == group_name);
-        let group_entry = format!("# Group: {}\n    Host {}-*\n      IdentityFile {}\n      AddKeysToAgent yes",
-                                  group_name, group_code, key_path.display());
-
-        if let Some(index) = group_index {
-            groups[index].1.push(group_entry);
+    fn add_key_to_agent(&self, key_path: &Path) -> std::io::Result<()> {
+        let output = if cfg!(target_os = "macos") {
+            Command::new("ssh-add")
+                .arg("--apple-use-keychain")
+                .arg(key_path)
+                .output()?
         } else {
-            groups.push((group_name.to_string(), vec![group_entry]));
-        }
+            Command::new("ssh-add")
+                .arg(key_path)
+                .output()?
+        };
 
-        // Rebuild the managed section
-        let mut new_managed_section = String::new();
-        for (_, hosts) in groups {
-            for host in hosts {
-                new_managed_section.push_str(&format!("{}\n", host));
+        if output.status.success() {
+            println!("SSH key added to ssh-agent successfully.");
+            Ok(())
+        } else {
+            let error = String::from_utf8_lossy(&output.stderr);
+            Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to add SSH key to ssh-agent: {}", error)))
+        }
+    }
+
+    fn update_config_with_key(&mut self, connection_name: &str, key_path: &Path) -> std::io::Result<()> {
+        let host_pattern = format!(r"(?m)^Host\s+{}\s*$", regex::escape(connection_name));
+        let re = Regex::new(&host_pattern).unwrap();
+
+        let key_path_str = key_path.to_str().unwrap();
+        let new_identity_line = format!("    IdentityFile {}", key_path_str);
+
+        if re.is_match(&self.content) {
+            let mut new_content = String::new();
+            let mut in_host_block = false;
+            let mut identity_added = false;
+
+            for line in self.content.lines() {
+                if re.is_match(line) {
+                    in_host_block = true;
+                    new_content.push_str(line);
+                    new_content.push('\n');
+                    continue;
+                }
+
+                if in_host_block {
+                    if line.trim().starts_with("IdentityFile") {
+                        if !identity_added {
+                            new_content.push_str(&new_identity_line);
+                            new_content.push('\n');
+                            identity_added = true;
+                        }
+                    } else if line.trim().is_empty() || line.trim().starts_with("Host ") {
+                        if !identity_added {
+                            new_content.push_str(&new_identity_line);
+                            new_content.push('\n');
+                        }
+                        in_host_block = false;
+                    } else {
+                        new_content.push_str(line);
+                        new_content.push('\n');
+                    }
+                } else {
+                    new_content.push_str(line);
+                    new_content.push('\n');
+                }
             }
-            new_managed_section.push('\n');
+
+            if in_host_block && !identity_added {
+                new_content.push_str(&new_identity_line);
+                new_content.push('\n');
+            }
+
+            self.content = new_content;
+        } else {
+            self.content.push_str(&format!("\nHost {}\n{}\n", connection_name, new_identity_line));
         }
 
-        // Rebuild the entire config content
-        let mut new_content = sections[0].to_string();
-        new_content.push_str(&format!("{}\n{}\n{}\n", START_MARKER, new_managed_section.trim(), END_MARKER));
-        if sections.len() > 1 {
-            new_content.push_str(sections[1]);
-        }
-
-        self.content = new_content;
         self.save()?;
-
-        println!("SSH config file updated successfully.");
+        println!("SSH config updated for connection '{}'. Added key: {}", connection_name, key_path_str);
         Ok(())
     }
 
@@ -241,15 +241,58 @@ impl SSHConfig {
     }
 }
 
+pub fn handle_add_key() -> std::io::Result<()> {
+    ensure_ssh_agent_running()?;
+    let mut ssh_config = SSHConfig::new()?;
+    ssh_config.add_key()
+}
+
+pub fn ensure_ssh_agent_running() -> std::io::Result<()> {
+    let output = Command::new("ssh-add")
+        .arg("-l")
+        .output()?;
+
+    if !output.status.success() {
+        println!("Starting ssh-agent...");
+        let output = Command::new("ssh-agent")
+            .arg("-s")
+            .output()?;
+
+        if output.status.success() {
+            let agent_output = String::from_utf8_lossy(&output.stdout);
+            for line in agent_output.lines() {
+                if line.starts_with("SSH_AUTH_SOCK=") || line.starts_with("SSH_AGENT_PID=") {
+                    let parts: Vec<&str> = line.splitn(2, '=').collect();
+                    if parts.len() == 2 {
+                        std::env::set_var(parts[0], parts[1].trim_matches(|c| c == ';' || c == '"'));
+                    }
+                }
+            }
+            println!("ssh-agent started successfully.");
+        } else {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to start ssh-agent"));
+        }
+    } else {
+        println!("ssh-agent is already running.");
+    }
+
+    Ok(())
+}
+
 pub fn handle_add_connection(args: &[String]) -> std::io::Result<()> {
-    if args.len() != 3 {
-        println!("Usage: velo add <name> <host> <user>");
+    if args.len() < 3 {
+        println!("Usage: velo add <name> <host> <user> [port]");
         return Ok(());
     }
 
     let name = &args[0];
     let host = &args[1];
     let user = &args[2];
+    let port = if args.len() > 3 {
+        args[3].parse().unwrap_or(22)
+    } else {
+        22
+    };
 
     let mut ssh_config = SSHConfig::new()?;
 
@@ -258,12 +301,11 @@ pub fn handle_add_connection(args: &[String]) -> std::io::Result<()> {
         return Ok(());
     }
 
-    let port = prompt_port();
-
     ssh_config.add_connection(name, host, user, port)?;
 
     println!("Connection '{}' added successfully.", name);
-    println!("Note: Make sure to add your SSH key to ssh-agent before connecting.");
+    println!("To add an SSH key to this connection, use: velo add-key");
+
     Ok(())
 }
 
@@ -329,35 +371,6 @@ pub fn handle_ssh(args: &[String]) -> std::io::Result<()> {
         println!("SSH connection failed");
     }
     Ok(())
-}
-
-pub fn handle_add_key() -> std::io::Result<()> {
-    let mut ssh_config = SSHConfig::new()?;
-    ssh_config.add_key()
-}
-
-
-pub fn ensure_ssh_agent_running() {
-    let output = std::process::Command::new("ssh-add")
-        .arg("-l")
-        .output()
-        .expect("Failed to execute ssh-add");
-
-    if !output.status.success() {
-        println!("Starting ssh-agent...");
-        let _ = std::process::Command::new("ssh-agent")
-            .status()
-            .expect("Failed to start ssh-agent");
-        println!("ssh-agent started. Please add your SSH key using 'ssh-add <path_to_private_key>'");
-
-        if prompt_yes_no("Would you like to add an SSH key now? (y/n): ") {
-            let _ = std::process::Command::new("ssh-add")
-                .status()
-                .expect("Failed to run ssh-add");
-        }
-    } else {
-        println!("ssh-agent is running and has keys loaded.");
-    }
 }
 
 fn prompt_port() -> u16 {
