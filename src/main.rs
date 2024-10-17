@@ -1,12 +1,8 @@
 mod util;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::env;
-use std::fs;
-use std::fs::File;
-use std::io::{stdin, Read, Write};
-use std::path::PathBuf;
+use std::io::{Read, Write};
 use util::help::*;
 use util::ssh::*;
 use util::zellij::*;
@@ -14,7 +10,6 @@ use util::completion::run_interactive_shell;
 use util::ui::launch_tui;
 
 fn main() {
-    launch_tui().unwrap();
     env::set_var("RUST_BACKTRACE", "1");
 
     let args: Vec<String> = env::args().collect();
