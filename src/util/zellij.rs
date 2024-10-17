@@ -1,4 +1,37 @@
 use std::process::Command;
+use std::fs;
+use std::path::PathBuf;
+
+pub fn create_layout(layout_name: &str, layout_content: &str) -> Result<(), String> {
+    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let layout_dir = home_dir.join(".config").join("zellij").join("layouts");
+    fs::create_dir_all(&layout_dir).map_err(|e| format!("Failed to create layout directory: {}", e))?;
+    
+    let layout_path = layout_dir.join(format!("{}.kdl", layout_name));
+    fs::write(&layout_path, layout_content).map_err(|e| format!("Failed to write layout file: {}", e))?;
+    
+    Ok(())
+}
+
+pub fn list_layouts() -> Result<Vec<String>, String> {
+    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let layout_dir = home_dir.join(".config").join("zellij").join("layouts");
+    
+    let layouts: Vec<String> = fs::read_dir(layout_dir)
+        .map_err(|e| format!("Failed to read layout directory: {}", e))?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.extension()? == "kdl" {
+                Some(path.file_stem()?.to_string_lossy().into_owned())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    Ok(layouts)
+}
 
 pub fn create_session(session_name: &str) -> Result<(), String> {
     let output = Command::new("zellij")

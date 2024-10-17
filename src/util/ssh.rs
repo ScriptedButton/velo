@@ -1,8 +1,9 @@
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write, BufReader, BufWriter, stdin};
 use std::path::{PathBuf, Path};
-use regex::Regex;
 use std::process::Command;
+use regex::Regex;
+use crate::util::zellij::*;
 
 pub struct SSHConfig {
     path: PathBuf,
@@ -313,8 +314,15 @@ pub fn handle_ssh(args: &[String]) -> std::io::Result<()> {
     let connection_name = &args[0];
     ensure_ssh_agent_running();
 
-    let status = std::process::Command::new("ssh")
-        .arg(connection_name)
+    // Create or attach to a Zellij session
+    let session_name = format!("ssh-{}", connection_name);
+    match create_session(&session_name) {
+        Ok(_) => println!("Created new Zellij session: {}", session_name),
+        Err(_) => println!("Attaching to existing Zellij session: {}", session_name),
+    }
+
+    let status = std::process::Command::new("zellij")
+        .args(&["run", "--", "ssh", connection_name])
         .status()?;
 
     if !status.success() {
