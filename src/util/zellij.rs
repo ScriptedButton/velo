@@ -2,6 +2,95 @@ use std::process::Command;
 use std::fs;
 use std::path::PathBuf;
 
+pub fn handle_zellij(args: &[String]) -> std::io::Result<()> {
+    if args.is_empty() {
+        println!("Usage: velo zellij <subcommand> [args...]");
+        println!("Subcommands: new, list, attach, kill, create-layout, list-layouts");
+        return Ok(());
+    }
+
+    let subcommand = &args[0];
+    let rest_args = &args[1..];
+
+    match subcommand.as_str() {
+        "new" => {
+            if rest_args.is_empty() {
+                println!("Usage: velo zellij new <session_name>");
+                return Ok(());
+            }
+            match create_session(&rest_args[0]) {
+                Ok(_) => {
+                    println!("Zellij session '{}' created successfully.", rest_args[0]);
+                    println!("To attach to this session, run: velo zellij attach {}", rest_args[0]);
+                },
+                Err(e) => eprintln!("Error: {}", e),
+            }
+        },
+        "list" => {
+            match list_sessions() {
+                Ok(sessions) => {
+                    println!("Zellij sessions:");
+                    for session in sessions {
+                        println!("  {}", session);
+                    }
+                },
+                Err(e) => eprintln!("Error listing Zellij sessions: {}", e),
+            }
+        },
+        "attach" => {
+            if rest_args.is_empty() {
+                println!("Usage: velo zellij attach <session_name>");
+                return Ok(());
+            }
+            match attach_session(&rest_args[0]) {
+                Ok(_) => println!("Attached to Zellij session: {}", rest_args[0]),
+                Err(e) => eprintln!("Error attaching to Zellij session: {}", e),
+            }
+        },
+        "kill" => {
+            if rest_args.is_empty() {
+                println!("Usage: velo zellij kill <session_name>");
+                return Ok(());
+            }
+            match kill_session(&rest_args[0]) {
+                Ok(_) => println!("Killed Zellij session: {}", rest_args[0]),
+                Err(e) => eprintln!("Error killing Zellij session: {}", e),
+            }
+        },
+        "create-layout" => {
+            if rest_args.len() != 2 {
+                println!("Usage: velo zellij create-layout <layout_name> <layout_file_path>");
+                return Ok(());
+            }
+            let layout_name = &rest_args[0];
+            let layout_file_path = &rest_args[1];
+            match fs::read_to_string(layout_file_path) {
+                Ok(content) => {
+                    match create_layout(layout_name, &content) {
+                        Ok(_) => println!("Layout '{}' created successfully.", layout_name),
+                        Err(e) => eprintln!("Error creating layout: {}", e),
+                    }
+                },
+                Err(e) => eprintln!("Error reading layout file: {}", e),
+            }
+        },
+        "list-layouts" => {
+            match list_layouts() {
+                Ok(layouts) => {
+                    println!("Available Zellij layouts:");
+                    for layout in layouts {
+                        println!("  {}", layout);
+                    }
+                },
+                Err(e) => eprintln!("Error listing layouts: {}", e),
+            }
+        },
+        _ => println!("Unknown Zellij subcommand: {}. Use 'velo zellij' for usage information.", subcommand),
+    }
+
+    Ok(())
+}
+
 pub fn create_layout(layout_name: &str, layout_content: &str) -> Result<(), String> {
     let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
     let layout_dir = home_dir.join(".config").join("zellij").join("layouts");

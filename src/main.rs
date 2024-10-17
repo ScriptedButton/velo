@@ -73,85 +73,11 @@ fn main() {
             }
         }
         "zellij" => {
-            if rest_args.is_empty() || rest_args.contains(&"-h".to_string()) || rest_args.contains(&"--help".to_string()) {
+            if rest_args.contains(&"-h".to_string()) {
                 print_zellij_help();
-                return;
             }
-            let subcommand = &rest_args[0];
-            match subcommand.as_str() {
-                "new" => {
-                    if rest_args.len() != 2 {
-                        println!("Usage: velo zellij new <session_name>");
-                        return;
-                    }
-                    match create_session(&rest_args[1]) {
-                        Ok(_) => {
-                            println!("Zellij session '{}' created successfully.", rest_args[1]);
-                            println!("To attach to this session, run: velo zellij attach {}", rest_args[1]);
-                        },
-                        Err(e) => eprintln!("Error: {}", e),
-                    }
-                },
-                "list" => {
-                    match list_sessions() {
-                        Ok(sessions) => {
-                            println!("Zellij sessions:");
-                            for session in sessions {
-                                println!("  {}", session);
-                            }
-                        },
-                        Err(e) => eprintln!("Error listing Zellij sessions: {}", e),
-                    }
-                },
-                "attach" => {
-                    if rest_args.len() != 2 {
-                        println!("Usage: velo zellij attach <session_name>");
-                        return;
-                    }
-                    match attach_session(&rest_args[1]) {
-                        Ok(_) => println!("Attached to Zellij session: {}", rest_args[1]),
-                        Err(e) => eprintln!("Error attaching to Zellij session: {}", e),
-                    }
-                },
-                "kill" => {
-                    if rest_args.len() != 2 {
-                        println!("Usage: velo zellij kill <session_name>");
-                        return;
-                    }
-                    match kill_session(&rest_args[1]) {
-                        Ok(_) => println!("Killed Zellij session: {}", rest_args[1]),
-                        Err(e) => eprintln!("Error killing Zellij session: {}", e),
-                    }
-                },
-                "create-layout" => {
-                    if rest_args.len() != 3 {
-                        println!("Usage: velo zellij create-layout <layout_name> <layout_file_path>");
-                        return;
-                    }
-                    let layout_name = &rest_args[1];
-                    let layout_file_path = &rest_args[2];
-                    match fs::read_to_string(layout_file_path) {
-                        Ok(content) => {
-                            match create_layout(layout_name, &content) {
-                                Ok(_) => println!("Layout '{}' created successfully.", layout_name),
-                                Err(e) => eprintln!("Error creating layout: {}", e),
-                            }
-                        },
-                        Err(e) => eprintln!("Error reading layout file: {}", e),
-                    }
-                },
-                "list-layouts" => {
-                    match list_layouts() {
-                        Ok(layouts) => {
-                            println!("Available Zellij layouts:");
-                            for layout in layouts {
-                                println!("  {}", layout);
-                            }
-                        },
-                        Err(e) => eprintln!("Error listing layouts: {}", e),
-                    }
-                },
-                _ => println!("Unknown Zellij subcommand: {}. Use -h for help.", subcommand),
+            else {
+                handle_zellij(rest_args);
             }
         },
         _ => println!("Unknown command: {}. Use 'velo -h' for help.", command),

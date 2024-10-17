@@ -9,6 +9,7 @@ use rustyline::Helper;
 use rustyline::{CompletionType, Config, Context, EditMode, Editor};
 use std::borrow::Cow::{self, Borrowed, Owned};
 use std::io::Error as IoError;
+use crate::util::zellij::handle_zellij;
 
 pub struct VeloCompleter {
     commands: Vec<String>,
@@ -182,6 +183,7 @@ fn handle_command(args: &[String]) -> Result<(), IoError> {
     match args[0].as_str() {
         "exit" => std::process::exit(0),
         "ssh" => handle_ssh(&args[1..]),
+        "zellij" => handle_zellij(&args[1..]), // Add this line
         "add" => handle_add_connection(&args[1..]),
         "list" | "ls" => handle_list_connections(),
         "remove" | "rm" => handle_remove_connection(&args[1..]),
