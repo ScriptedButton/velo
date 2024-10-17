@@ -1,6 +1,5 @@
 use crate::util::help::*;
 use crate::util::ssh::*;
-use crate::util::tmux::*;
 use rustyline::completion::{Completer, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -13,7 +12,6 @@ use std::io::Error as IoError;
 
 pub struct VeloCompleter {
     commands: Vec<String>,
-    tmux_subcommands: Vec<String>,
     zellij_subcommands: Vec<String>,
 }
 
@@ -21,7 +19,6 @@ impl VeloCompleter {
     pub fn new() -> Self {
         VeloCompleter {
             commands: vec![
-                "tmux".to_string(),
                 "ssh".to_string(),
                 "add".to_string(),
                 "list".to_string(),
@@ -29,18 +26,13 @@ impl VeloCompleter {
                 "add-key".to_string(),
                 "zellij".to_string(), 
             ],
-            tmux_subcommands: vec![
-                "new".to_string(),
-                "list".to_string(),
-                "ls".to_string(),
-                "attach".to_string(),
-                "kill".to_string(),
-            ],
             zellij_subcommands: vec![ // Add this block
                 "new".to_string(),
                 "list".to_string(),
                 "attach".to_string(),
                 "kill".to_string(),
+                "create-layout".to_string(),
+                "list-layouts".to_string(),
             ],
         }
     }
@@ -84,16 +76,6 @@ impl Completer for VeloCompleter {
                     completions.push(Pair {
                         display: command.clone(),
                         replacement: command.clone(),
-                    });
-                }
-            }
-        } else if words[0] == "tmux" && words.len() == 2 {
-            // Complete tmux subcommands
-            for subcommand in &self.tmux_subcommands {
-                if subcommand.starts_with(word_to_complete) {
-                    completions.push(Pair {
-                        display: subcommand.clone(),
-                        replacement: subcommand.clone(),
                     });
                 }
             }
@@ -199,10 +181,6 @@ pub fn run_interactive_shell() -> rustyline::Result<()> {
 fn handle_command(args: &[String]) -> Result<(), IoError> {
     match args[0].as_str() {
         "exit" => std::process::exit(0),
-        "tmux" => {
-            handle_tmux(&args[1..]);
-            Ok(())
-        }
         "ssh" => handle_ssh(&args[1..]),
         "add" => handle_add_connection(&args[1..]),
         "list" | "ls" => handle_list_connections(),

@@ -2,7 +2,6 @@ pub fn print_main_help() {
     println!("Usage: velo <command> [args...]");
     println!("Available commands:");
     println!("  ssh      Connect via SSH");
-    println!("  tmux     Manage tmux sessions");
     println!("  zellij   Manage Zellij sessions");
     println!("  add      Add a new SSH connection");
     println!("  list     List all SSH connections");
@@ -11,13 +10,36 @@ pub fn print_main_help() {
     println!("For more details, use 'velo <command> -h'");
 }
 
-pub fn print_tmux_help() {
-    println!("Usage: velo tmux <subcommand> [args...]");
-    println!("Available subcommands:");
-    println!("  new <session_name>     Create a new tmux session");
-    println!("  list                  List active tmux sessions");
-    println!("  attach <session_name>  Attach to a tmux session");
-    println!("  kill <session_name>    Kill a tmux session");
+pub fn print_zellij_new_help() {
+    println!("Usage: velo zellij new <session_name>");
+    println!("Create a new Zellij session with the given name.");
+    println!("The session will be created in detached mode.");
+}
+
+pub fn print_zellij_list_help() {
+    println!("Usage: velo zellij list");
+    println!("List all active Zellij sessions.");
+}
+
+pub fn print_zellij_attach_help() {
+    println!("Usage: velo zellij attach <session_name>");
+    println!("Attach to an existing Zellij session with the given name.");
+}
+
+pub fn print_zellij_kill_help() {
+    println!("Usage: velo zellij kill <session_name>");
+    println!("Kill (terminate) a Zellij session with the given name.");
+}
+
+pub fn print_zellij_create_layout_help() {
+    println!("Usage: velo zellij create-layout <layout_name> <layout_file_path>");
+    println!("Create a new Zellij layout with the given name, using the content from the specified file.");
+    println!("The layout will be saved in the Zellij layouts directory.");
+}
+
+pub fn print_zellij_list_layouts_help() {
+    println!("Usage: velo zellij list-layouts");
+    println!("List all available Zellij layouts in the Zellij layouts directory.");
 }
 
 pub fn print_ssh_help() {
@@ -29,10 +51,12 @@ pub fn print_ssh_help() {
 pub fn print_zellij_help() {
     println!("Usage: velo zellij <subcommand> [args...]");
     println!("Available subcommands:");
-    println!("  new <session_name>     Create a new Zellij session");
-    println!("  list                   List active Zellij sessions");
-    println!("  attach <session_name>  Attach to a Zellij session");
-    println!("  kill <session_name>    Kill a Zellij session");
+    println!("  new <session_name>             Create a new Zellij session");
+    println!("  list                           List active Zellij sessions");
+    println!("  attach <session_name>          Attach to a Zellij session");
+    println!("  kill <session_name>            Kill a Zellij session");
+    println!("  list-layouts                   List all Zellij layouts");
+    println!("  create-layout <layout_name>    Create a Zellij layout");
 }
 
 pub fn print_add_help() {
