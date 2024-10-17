@@ -11,10 +11,12 @@ use util::ssh::*;
 use util::tmux::handle_tmux;
 use util::zellij::*;
 use util::completion::run_interactive_shell;
+use util::ui::launch_tui;
 
 // ... (existing code remains unchanged)
 
 fn main() {
+    launch_tui().unwrap();
     env::set_var("RUST_BACKTRACE", "1");
 
     let args: Vec<String> = env::args().collect();

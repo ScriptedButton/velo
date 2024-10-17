@@ -298,6 +298,12 @@ pub fn handle_list_connections() -> std::io::Result<()> {
     Ok(())
 }
 
+
+pub fn get_connections() -> Vec<String> {
+    let ssh_config = SSHConfig::new().unwrap();
+    ssh_config.list_connections()
+}
+
 pub fn handle_ssh(args: &[String]) -> std::io::Result<()> {
     if args.is_empty() {
         println!("Usage: velo ssh <connection_name>");
