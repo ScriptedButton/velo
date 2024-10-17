@@ -79,3 +79,10 @@ pub fn print_add_key_help() {
     println!("Usage: velo add-key");
     println!("Add an SSH private key to the keyring for automatic login.");
 }
+
+pub fn print_copy_id_help() {
+    println!("Usage: velo copy-id <connection_name> <key_path>");
+    println!("Copy an SSH public key to a remote server.");
+    println!("  <connection_name>  The name of the SSH connection (as defined in your SSH config)");
+    println!("  <key_path>         The path to the public key file to copy");
+}

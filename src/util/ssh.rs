@@ -27,6 +27,22 @@ impl SSHConfig {
         })
     }
 
+    pub fn copy_id(&self, connection_name: &str, key_path: &Path) -> std::io::Result<()> {
+        let output = Command::new("ssh-copy-id")
+            .arg("-i")
+            .arg(key_path)
+            .arg(connection_name)
+            .output()?;
+
+        if output.status.success() {
+            println!("SSH key successfully copied to the remote server.");
+            Ok(())
+        } else {
+            let error = String::from_utf8_lossy(&output.stderr);
+            Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to copy SSH key: {}", error)))
+        }
+    }
+
     pub fn add_connection(&mut self, name: &str, host: &str, user: &str, port: u16) -> std::io::Result<()> {
         let entry = format!("\nHost {}\n    HostName {}\n    User {}\n    Port {}\n", name, host, user, port);
         self.content.push_str(&entry);
@@ -80,7 +96,7 @@ impl SSHConfig {
     }
 
 
-    pub fn add_key(&mut self) -> std::io::Result<()> {
+    pub fn add_key(&mut self) -> std::io::Result<PathBuf> {
         let ssh_dir = dirs::home_dir().unwrap().join(".ssh");
         let pub_keys: Vec<PathBuf> = std::fs::read_dir(&ssh_dir)?
             .filter_map(|entry| {
@@ -95,8 +111,7 @@ impl SSHConfig {
             .collect();
 
         if pub_keys.is_empty() {
-            println!("No SSH public keys found in {}.", ssh_dir.display());
-            return Ok(());
+            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "No SSH public keys found."));
         }
 
         println!("Select an SSH public key:");
@@ -148,7 +163,7 @@ impl SSHConfig {
         // Update SSH config file
         self.update_config_with_key(connection_name, &private_key_path)?;
 
-        Ok(())
+        Ok(private_key_path)
     }
 
     fn add_key_to_agent(&self, key_path: &Path) -> std::io::Result<()> {
@@ -183,6 +198,7 @@ impl SSHConfig {
             let mut new_content = String::new();
             let mut in_host_block = false;
             let mut identity_added = false;
+            let mut add_keys_to_agent_added = false;
 
             for line in self.content.lines() {
                 if re.is_match(line) {
@@ -199,10 +215,16 @@ impl SSHConfig {
                             new_content.push('\n');
                             identity_added = true;
                         }
+                    } else if line.trim().starts_with("AddKeysToAgent") {
+                        new_content.push_str("    AddKeysToAgent yes\n");
+                        add_keys_to_agent_added = true;
                     } else if line.trim().is_empty() || line.trim().starts_with("Host ") {
                         if !identity_added {
                             new_content.push_str(&new_identity_line);
                             new_content.push('\n');
+                        }
+                        if !add_keys_to_agent_added {
+                            new_content.push_str("    AddKeysToAgent yes\n");
                         }
                         in_host_block = false;
                     } else {
@@ -215,14 +237,19 @@ impl SSHConfig {
                 }
             }
 
-            if in_host_block && !identity_added {
-                new_content.push_str(&new_identity_line);
-                new_content.push('\n');
+            if in_host_block {
+                if !identity_added {
+                    new_content.push_str(&new_identity_line);
+                    new_content.push('\n');
+                }
+                if !add_keys_to_agent_added {
+                    new_content.push_str("    AddKeysToAgent yes\n");
+                }
             }
 
             self.content = new_content;
         } else {
-            self.content.push_str(&format!("\nHost {}\n{}\n", connection_name, new_identity_line));
+            self.content.push_str(&format!("\nHost {}\n{}\n    AddKeysToAgent yes\n", connection_name, new_identity_line));
         }
 
         self.save()?;
@@ -244,7 +271,40 @@ impl SSHConfig {
 pub fn handle_add_key() -> std::io::Result<()> {
     ensure_ssh_agent_running()?;
     let mut ssh_config = SSHConfig::new()?;
-    ssh_config.add_key()
+
+    match ssh_config.add_key() {
+        Ok(key_path) => {
+            println!("Do you want to copy this key to a remote server? (y/n)");
+            let mut response = String::new();
+            stdin().read_line(&mut response)?;
+
+            if response.trim().to_lowercase() == "y" {
+                println!("Enter the name of the SSH connection to copy the key to:");
+                let mut connection_name = String::new();
+                stdin().read_line(&mut connection_name)?;
+                let connection_name = connection_name.trim();
+
+                ssh_config.copy_id(connection_name, &key_path)?;
+            }
+            Ok(())
+        },
+        Err(e) => Err(e),
+    }
+}
+
+pub fn handle_copy_id(args: &[String]) -> std::io::Result<()> {
+    if args.len() != 2 {
+        println!("Usage: velo copy-id <connection_name> <key_path>");
+        return Ok(());
+    }
+
+    let connection_name = &args[0];
+    let key_path = PathBuf::from(&args[1]);
+
+    let ssh_config = SSHConfig::new()?;
+    ssh_config.copy_id(connection_name, &key_path)?;
+
+    Ok(())
 }
 
 pub fn ensure_ssh_agent_running() -> std::io::Result<()> {
