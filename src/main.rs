@@ -3,13 +3,14 @@ mod util;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::io::{Read, Write};
+use util::completion::run_interactive_shell;
 use util::help::*;
 use util::ssh::*;
-use util::zellij::*;
-use util::completion::run_interactive_shell;
 use util::ui::launch_tui;
+use util::zellij::*;
 
 fn main() {
+    launch_tui().unwrap();
     env::set_var("RUST_BACKTRACE", "1");
 
     let args: Vec<String> = env::args().collect();
@@ -70,11 +71,10 @@ fn main() {
         "zellij" => {
             if rest_args.contains(&"-h".to_string()) {
                 print_zellij_help();
-            }
-            else {
+            } else {
                 handle_zellij(rest_args);
             }
-        },
+        }
         _ => println!("Unknown command: {}. Use 'velo -h' for help.", command),
     }
 }

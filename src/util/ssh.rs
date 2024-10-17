@@ -7,7 +7,6 @@ use std::io::{stdin, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-
 pub struct SSHConfig {
     path: PathBuf,
     content: String,
@@ -30,15 +29,16 @@ impl SSHConfig {
         })
     }
 
-    pub fn key_exists_on_remote(&self, connection_name: &str, public_key_path: &PathBuf) -> io::Result<bool> {
+    pub fn key_exists_on_remote(
+        &self,
+        connection_name: &str,
+        public_key_path: &PathBuf,
+    ) -> io::Result<bool> {
         let public_key = std::fs::read_to_string(public_key_path)?;
         let public_key = public_key.trim();
 
         let escaped_key = public_key.replace("'", "'\\''");
-        let remote_command = format!(
-            "grep -qF '{}' ~/.ssh/authorized_keys",
-            escaped_key
-        );
+        let remote_command = format!("grep -qF '{}' ~/.ssh/authorized_keys", escaped_key);
 
         let output = Command::new("ssh")
             .arg(connection_name)
@@ -369,7 +369,10 @@ pub fn handle_add_key() -> io::Result<()> {
 
     match ssh_config.add_key() {
         Ok((key_path, connection_name)) => {
-            println!("Do you want to copy this key to the remote server '{}' ? (y/n)", connection_name);
+            println!(
+                "Do you want to copy this key to the remote server '{}' ? (y/n)",
+                connection_name
+            );
             io::stdout().flush()?;
             let mut response = String::new();
             io::stdin().read_line(&mut response)?;
@@ -506,22 +509,38 @@ pub fn handle_ssh(args: &[String]) -> std::io::Result<()> {
     }
 
     let connection_name = &args[0];
-    ensure_ssh_agent_running();
 
-    // Create or attach to a Zellij session
-    let session_name = format!("ssh-{}", connection_name);
-    match create_session(&session_name) {
-        Ok(_) => println!("Created new Zellij session: {}", session_name),
-        Err(_) => println!("Attaching to existing Zellij session: {}", session_name),
+    #[cfg(windows)]
+    {
+        let status = Command::new("ssh")
+            .arg(connection_name)
+            .status()?;
+
+        if !status.success() {
+            println!("SSH connection failed");
+        }
     }
 
-    let status = std::process::Command::new("zellij")
-        .args(&["run", "--", "ssh", connection_name])
-        .status()?;
+    #[cfg(not(windows))]
+    {
+        ensure_ssh_agent_running();
 
-    if !status.success() {
-        println!("SSH connection failed");
+        // Create or attach to a Zellij session
+        let session_name = format!("ssh-{}", connection_name);
+        match create_session(&session_name) {
+            Ok(_) => println!("Created new Zellij session: {}", session_name),
+            Err(_) => println!("Attaching to existing Zellij session: {}", session_name),
+        }
+
+        let status = Command::new("zellij")
+            .args(&["run", "--", "ssh", connection_name])
+            .status()?;
+
+        if !status.success() {
+            println!("SSH connection failed");
+        }
     }
+
     Ok(())
 }
 

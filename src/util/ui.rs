@@ -1,5 +1,6 @@
 use std::io::{self, stdout};
 
+use crate::util::ssh::{get_connections, handle_add_connection, handle_ssh};
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -7,13 +8,11 @@ use ratatui::{
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
         ExecutableCommand,
     },
-    widgets::{Block, Paragraph, Borders, List, ListItem, ListState},
-    prelude::{Constraint, Direction, Layout},
-    Frame, Terminal,
+    prelude::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    Frame, Terminal,
 };
-
-use crate::util::ssh::{get_connections, handle_ssh, handle_add_connection};
 
 #[derive(Clone, PartialEq)]
 enum InputMode {
@@ -89,84 +88,114 @@ pub fn launch_tui() -> io::Result<()> {
 fn handle_events(app_state: &mut AppState) -> io::Result<bool> {
     if event::poll(std::time::Duration::from_millis(50))? {
         if let Event::Key(key) = event::read()? {
-            match app_state.input_mode {
-                InputMode::Normal => match key.code {
-                    KeyCode::Char('q') => return Ok(true),
-                    KeyCode::Up => {
-                        if app_state.focused_section == 0 {
-                            let i = app_state.main_menu_state.selected().unwrap_or(0);
-                            app_state.main_menu_state.select(Some(i.saturating_sub(1)));
-                        } else {
-                            let i = app_state.ssh_connections_state.selected().unwrap_or(0);
-                            app_state
-                                .ssh_connections_state
-                                .select(Some(i.saturating_sub(1)));
+            if key.kind == event::KeyEventKind::Press {
+                match app_state.input_mode {
+                    InputMode::Normal => match key.code {
+                        KeyCode::Char('q') => return Ok(true),
+                        KeyCode::Up => {
+                            if app_state.focused_section == 0 {
+                                let i = app_state.main_menu_state.selected().unwrap_or(0);
+                                app_state.main_menu_state.select(Some(i.saturating_sub(1)));
+                            } else {
+                                let i = app_state.ssh_connections_state.selected().unwrap_or(0);
+                                app_state
+                                    .ssh_connections_state
+                                    .select(Some(i.saturating_sub(1)));
+                            }
                         }
-                    }
-                    KeyCode::Down => {
-                        if app_state.focused_section == 0 {
-                            let i = app_state.main_menu_state.selected().unwrap_or(0);
-                            app_state.main_menu_state.select(Some((i + 1).min(4)));
-                        } else {
-                            let i = app_state.ssh_connections_state.selected().unwrap_or(0);
-                            app_state
-                                .ssh_connections_state
-                                .select(Some(
+                        KeyCode::Down => {
+                            if app_state.focused_section == 0 {
+                                let i = app_state.main_menu_state.selected().unwrap_or(0);
+                                app_state.main_menu_state.select(Some((i + 1).min(4)));
+                            } else {
+                                let i = app_state.ssh_connections_state.selected().unwrap_or(0);
+                                app_state.ssh_connections_state.select(Some(
                                     (i + 1).min(app_state.ssh_connections.len().saturating_sub(1)),
                                 ));
+                            }
                         }
-                    }
-                    KeyCode::Tab => {
-                        app_state.focused_section = 1 - app_state.focused_section;
-                    }
-                    KeyCode::Enter => {
-                        if app_state.focused_section == 0 {
-                            match app_state.main_menu_state.selected() {
-                                Some(3) => {
-                                    // Start editing when Add Connection is selected
-                                    app_state.input_mode = InputMode::Editing;
+                        KeyCode::Tab => {
+                            app_state.focused_section = 1 - app_state.focused_section;
+                            if app_state.focused_section == 1
+                                && app_state.main_menu_state.selected() == Some(3)
+                            {
+                                app_state.input_mode = InputMode::Editing;
+                            }
+                        }
+                        KeyCode::Enter => {
+                            if app_state.focused_section == 0 {
+                                match app_state.main_menu_state.selected() {
+                                    Some(3) => {
+                                        app_state.input_mode = InputMode::Editing;
+                                    }
+                                    _ => {}
                                 }
-                                _ => {}
+                            } else if app_state.main_menu_state.selected() == Some(0) {
+                                // SSH connection is selected
+                                if let Some(selected_index) =
+                                    app_state.ssh_connections_state.selected()
+                                {
+                                    if let Some(selected_connection) =
+                                        app_state.ssh_connections.get(selected_index)
+                                    {
+                                        // Temporarily disable raw mode and leave alternate screen
+                                        disable_raw_mode()?;
+                                        stdout().execute(LeaveAlternateScreen)?;
+
+                                        // Connect to the selected SSH
+                                        if let Err(e) = handle_ssh(&[selected_connection.to_string()]) {
+                                            eprintln!("Failed to connect: {}", e);
+                                            // Wait for user input before continuing
+                                            println!("Press any key to continue...");
+                                            let _ = std::io::stdin().read_line(&mut String::new());
+                                        }
+
+                                        // Re-enable raw mode and enter alternate screen
+                                        enable_raw_mode()?;
+                                        stdout().execute(EnterAlternateScreen)?;
+                                    }
+                                }
                             }
                         }
-                    }
-                    _ => {}
-                },
-                InputMode::Editing => match key.code {
-                    KeyCode::Esc => {
-                        app_state.input_mode = InputMode::Normal;
-                    }
-                    KeyCode::Enter => {
-                        if app_state.add_connection_form.current_field == 2 {
-                            let args: Vec<String> =
-                                app_state.add_connection_form.fields.clone();
-                            if handle_add_connection(&args).is_ok() {
-                                app_state.ssh_connections = get_connections();
-                                app_state.input_mode = InputMode::Normal;
-                                app_state.add_connection_form = AddConnectionForm::new();
+                        _ => {}
+                    },
+                    InputMode::Editing => match key.code {
+                        KeyCode::Esc => {
+                            app_state.input_mode = InputMode::Normal;
+                            app_state.focused_section = app_state.focused_section - 1;
+                        }
+                        KeyCode::Enter => {
+                            if app_state.add_connection_form.current_field == 2 {
+                                let args: Vec<String> =
+                                    app_state.add_connection_form.fields.clone();
+                                if handle_add_connection(&args).is_ok() {
+                                    app_state.ssh_connections = get_connections();
+                                    app_state.input_mode = InputMode::Normal;
+                                    app_state.add_connection_form = AddConnectionForm::new();
+                                }
+                            } else {
+                                app_state.add_connection_form.next_field();
                             }
-                        } else {
+                        }
+                        KeyCode::Backspace => {
+                            let current_field = &mut app_state.add_connection_form.fields
+                                [app_state.add_connection_form.current_field];
+                            current_field.pop();
+                        }
+                        KeyCode::Char(c) => {
+                            let current_field = &mut app_state.add_connection_form.fields
+                                [app_state.add_connection_form.current_field];
+                            current_field.push(c);
+                        }
+                        KeyCode::Tab | KeyCode::Down => {
                             app_state.add_connection_form.next_field();
                         }
-                    }
-                    KeyCode::Backspace => {
-                        let current_field = &mut app_state.add_connection_form.fields
-                            [app_state.add_connection_form.current_field];
-                        current_field.pop();
-                    }
-                    KeyCode::Char(c) => {
-                        let current_field = &mut app_state.add_connection_form.fields
-                            [app_state.add_connection_form.current_field];
-                        current_field.push(c);
-                    }
-                    KeyCode::Tab => {
-                        app_state.add_connection_form.next_field();
-                    }
-                    KeyCode::BackTab => {
-                        app_state.add_connection_form.prev_field();
-                    }
-                    _ => {}
-                },
+                        KeyCode::BackTab | KeyCode::Up => {
+                            app_state.add_connection_form.prev_field();
+                        }
+                        _ => {}
+                    },
+                }
             }
         }
     }
@@ -176,7 +205,11 @@ fn handle_events(app_state: &mut AppState) -> io::Result<bool> {
 fn ui(frame: &mut Frame, app_state: &mut AppState) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints(vec![
+            Constraint::Length(1),
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
+        ])
         .split(frame.area());
 
     let main_menu_items = vec![
@@ -187,42 +220,87 @@ fn ui(frame: &mut Frame, app_state: &mut AppState) {
         ListItem::new("Add Key"),
     ];
 
+    let title = Paragraph::new("Velo")
+        .style(
+            Style::default()
+                .fg(Color::Black) // Changed to black for better contrast
+                .bg(Color::Yellow) // Added yellow background
+                .add_modifier(Modifier::BOLD),
+        )
+        .alignment(Alignment::Center);
+
+    frame.render_widget(title, layout[0]);
+
     let main_menu_block = Block::new()
         .borders(Borders::ALL)
         .title("Main Menu")
-        .border_style(Style::default().add_modifier(
-            if app_state.focused_section == 0 {
+        .border_style(
+            Style::default().add_modifier(if app_state.focused_section == 0 {
                 Modifier::BOLD
             } else {
                 Modifier::empty()
-            },
-        ));
+            }),
+        );
 
     let main_menu = List::new(main_menu_items)
         .block(main_menu_block)
         .highlight_symbol("=> ")
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
-    frame.render_stateful_widget(main_menu, layout[0], &mut app_state.main_menu_state);
+    frame.render_stateful_widget(main_menu, layout[1], &mut app_state.main_menu_state);
 
     let bottom_block = Block::new()
         .borders(Borders::ALL)
         .title("Details")
-        .border_style(Style::default().add_modifier(
-            if app_state.focused_section == 1 {
+        .border_style(
+            Style::default().add_modifier(if app_state.focused_section == 1 {
                 Modifier::BOLD
             } else {
                 Modifier::empty()
-            },
-        ));
+            }),
+        );
 
     match app_state.main_menu_state.selected() {
+        Some(0) => {
+            // SSH option
+            let connections_block = Block::new()
+                .borders(Borders::ALL)
+                .title("SSH Connections")
+                .border_style(
+                    Style::default().add_modifier(if app_state.focused_section == 1 {
+                        Modifier::BOLD
+                    } else {
+                        Modifier::empty()
+                    }),
+                );
+
+            let connections: Vec<ListItem> = app_state
+                .ssh_connections
+                .iter()
+                .map(|c| ListItem::new(c.as_str()))
+                .collect();
+
+            let connections_list = List::new(connections)
+                .block(connections_block)
+                .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+                .highlight_symbol("=> ");
+
+            frame.render_stateful_widget(
+                connections_list,
+                layout[2],
+                &mut app_state.ssh_connections_state,
+            );
+        }
         Some(3) => {
             // Add Connection Form
             let add_connection_layout = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints(vec![Constraint::Length(3), Constraint::Length(3), Constraint::Length(3)])
-                .split(layout[1]);
+                .constraints(vec![
+                    Constraint::Ratio(1, 3),
+                    Constraint::Ratio(1, 3),
+                    Constraint::Ratio(1, 3),
+                ])
+                .split(layout[2]);
 
             let field_names = ["Name", "Host", "User"];
             for (i, field) in app_state.add_connection_form.fields.iter().enumerate() {
@@ -240,7 +318,7 @@ fn ui(frame: &mut Frame, app_state: &mut AppState) {
             }
         }
         _ => {
-            frame.render_widget(Paragraph::new("").block(bottom_block), layout[1]);
+            frame.render_widget(Paragraph::new("").block(bottom_block), layout[2]);
         }
     }
 }

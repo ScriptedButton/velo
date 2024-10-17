@@ -1,8 +1,8 @@
 // src/util/mod.rs
 
+pub(crate) mod completion;
 pub mod help;
 pub mod keyring;
 pub mod ssh;
-pub mod zellij;
-pub(crate) mod completion;
 pub mod ui;
+pub mod zellij;

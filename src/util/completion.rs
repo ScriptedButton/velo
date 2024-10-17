@@ -1,5 +1,6 @@
 use crate::util::help::*;
 use crate::util::ssh::*;
+use crate::util::zellij::handle_zellij;
 use rustyline::completion::{Completer, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -9,7 +10,6 @@ use rustyline::Helper;
 use rustyline::{CompletionType, Config, Context, EditMode, Editor};
 use std::borrow::Cow::{self, Borrowed, Owned};
 use std::io::Error as IoError;
-use crate::util::zellij::handle_zellij;
 
 pub struct VeloCompleter {
     commands: Vec<String>,
@@ -25,9 +25,10 @@ impl VeloCompleter {
                 "list".to_string(),
                 "remove".to_string(),
                 "add-key".to_string(),
-                "zellij".to_string(), 
+                "zellij".to_string(),
             ],
-            zellij_subcommands: vec![ // Add this block
+            zellij_subcommands: vec![
+                // Add this block
                 "new".to_string(),
                 "list".to_string(),
                 "attach".to_string(),
@@ -65,7 +66,10 @@ impl Completer for VeloCompleter {
         let start = if words.len() == 1 {
             0
         } else {
-            line[..pos].rfind(char::is_whitespace).map(|i| i + 1).unwrap_or(0)
+            line[..pos]
+                .rfind(char::is_whitespace)
+                .map(|i| i + 1)
+                .unwrap_or(0)
         };
 
         let word_to_complete = words.last().unwrap();
@@ -80,7 +84,8 @@ impl Completer for VeloCompleter {
                     });
                 }
             }
-        } else if words[0] == "zellij" && words.len() == 2 { // Add this block
+        } else if words[0] == "zellij" && words.len() == 2 {
+            // Add this block
             // Complete zellij subcommands
             for subcommand in &self.zellij_subcommands {
                 if subcommand.starts_with(word_to_complete) {
@@ -160,15 +165,15 @@ pub fn run_interactive_shell() -> rustyline::Result<()> {
                         eprintln!("Error: {}", e);
                     }
                 }
-            },
+            }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");
                 break;
-            },
+            }
             Err(ReadlineError::Eof) => {
                 println!("CTRL-D");
                 break;
-            },
+            }
             Err(err) => {
                 println!("Error: {:?}", err);
                 break;
