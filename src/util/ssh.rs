@@ -1,4 +1,8 @@
 use crate::util::zellij::*;
+use ratatui::crossterm::{
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
+};
 use regex::Regex;
 use std::fs::{self, Permissions};
 use std::fs::{File, OpenOptions};
@@ -6,11 +10,6 @@ use std::io;
 use std::io::{stdin, stdout, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use ratatui::crossterm::{
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    ExecutableCommand,
-};
-
 
 pub struct SSHConfig {
     path: PathBuf,
@@ -513,9 +512,7 @@ pub fn handle_ssh_from_tui(connection: &str) -> io::Result<()> {
     stdout().execute(LeaveAlternateScreen)?;
 
     // Step 2: Execute the SSH command
-    let status = std::process::Command::new("ssh")
-        .arg(connection)
-        .status()?;
+    let status = std::process::Command::new("ssh").arg(connection).status()?;
 
     // Step 3: Wait for user input before returning to TUI
     if !status.success() {
@@ -541,9 +538,7 @@ pub fn handle_ssh(args: &[String]) -> std::io::Result<()> {
 
     #[cfg(windows)]
     {
-        let status = Command::new("ssh")
-            .arg(connection_name)
-            .status()?;
+        let status = Command::new("ssh").arg(connection_name).status()?;
 
         if !status.success() {
             println!("SSH connection failed");

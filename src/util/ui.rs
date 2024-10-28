@@ -1,6 +1,7 @@
 use std::io::{self, stdout};
 
 use crate::util::ssh::{get_connections, handle_add_connection, handle_ssh_from_tui};
+use ratatui::layout::Position;
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -8,15 +9,12 @@ use ratatui::{
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
         ExecutableCommand,
     },
+    layout::Flex,
     prelude::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, BorderType},
-    layout::{
-        Flex
-    },
+    widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
-use ratatui::layout::Position;
 
 #[derive(Clone, PartialEq)]
 enum InputMode {
@@ -180,8 +178,12 @@ fn handle_events(app_state: &mut AppState) -> io::Result<bool> {
                                     _ => {}
                                 }
                             } else if app_state.main_menu_state.selected() == Some(0) {
-                                if let Some(selected_index) = app_state.ssh_connections_state.selected() {
-                                    if let Some(selected_connection) = app_state.ssh_connections.get(selected_index) {
+                                if let Some(selected_index) =
+                                    app_state.ssh_connections_state.selected()
+                                {
+                                    if let Some(selected_connection) =
+                                        app_state.ssh_connections.get(selected_index)
+                                    {
                                         if let Err(e) = handle_ssh_from_tui(selected_connection) {
                                             eprintln!("Failed to connect: {}", e);
                                         }
@@ -199,7 +201,8 @@ fn handle_events(app_state: &mut AppState) -> io::Result<bool> {
                         }
                         KeyCode::Enter => {
                             if app_state.add_connection_form.current_field == 2 {
-                                let args: Vec<String> = app_state.add_connection_form.fields.clone();
+                                let args: Vec<String> =
+                                    app_state.add_connection_form.fields.clone();
                                 if handle_add_connection(&args).is_ok() {
                                     app_state.ssh_connections = get_connections();
                                     app_state.input_mode = InputMode::Normal;
@@ -254,14 +257,18 @@ fn ui(frame: &mut Frame, app_state: &mut AppState) {
         .direction(Direction::Vertical)
         .flex(Flex::Start)
         .constraints([
-            Constraint::Length(1),      // Title bar
-            Constraint::Min(10),        // Content area
+            Constraint::Length(1), // Title bar
+            Constraint::Min(10),   // Content area
         ])
         .split(frame.area());
 
     // Title with matrix-like styling
     let title = Paragraph::new("// VELO //")
-        .style(Style::default().fg(HIGHLIGHT).add_modifier(Modifier::BOLD | Modifier::SLOW_BLINK))
+        .style(
+            Style::default()
+                .fg(HIGHLIGHT)
+                .add_modifier(Modifier::BOLD | Modifier::SLOW_BLINK),
+        )
         .alignment(Alignment::Center);
     frame.render_widget(title, main_layout[0]);
 
@@ -270,8 +277,8 @@ fn ui(frame: &mut Frame, app_state: &mut AppState) {
         .direction(Direction::Horizontal)
         .flex(Flex::SpaceBetween)
         .constraints([
-            Constraint::Percentage(30),  // Menu column
-            Constraint::Percentage(70),  // Details column
+            Constraint::Percentage(30), // Menu column
+            Constraint::Percentage(70), // Details column
         ])
         .split(main_layout[1]);
 
@@ -290,8 +297,16 @@ fn ui(frame: &mut Frame, app_state: &mut AppState) {
         .title_alignment(Alignment::Center)
         .border_style(
             Style::default()
-                .fg(if app_state.focused_section == 0 { HIGHLIGHT } else { DARKER_GREEN })
-                .add_modifier(if app_state.focused_section == 0 { Modifier::BOLD } else { Modifier::empty() }),
+                .fg(if app_state.focused_section == 0 {
+                    HIGHLIGHT
+                } else {
+                    DARKER_GREEN
+                })
+                .add_modifier(if app_state.focused_section == 0 {
+                    Modifier::BOLD
+                } else {
+                    Modifier::empty()
+                }),
         );
 
     let main_menu = List::new(main_menu_items)
@@ -316,8 +331,16 @@ fn ui(frame: &mut Frame, app_state: &mut AppState) {
                 .title_alignment(Alignment::Center)
                 .border_style(
                     Style::default()
-                        .fg(if app_state.focused_section == 1 { HIGHLIGHT } else { DARKER_GREEN })
-                        .add_modifier(if app_state.focused_section == 1 { Modifier::BOLD } else { Modifier::empty() }),
+                        .fg(if app_state.focused_section == 1 {
+                            HIGHLIGHT
+                        } else {
+                            DARKER_GREEN
+                        })
+                        .add_modifier(if app_state.focused_section == 1 {
+                            Modifier::BOLD
+                        } else {
+                            Modifier::empty()
+                        }),
                 );
 
             let connections: Vec<ListItem> = app_state
@@ -328,10 +351,18 @@ fn ui(frame: &mut Frame, app_state: &mut AppState) {
 
             let connections_list = List::new(connections)
                 .block(connections_block)
-                .highlight_style(Style::default().fg(HIGHLIGHT).add_modifier(Modifier::BOLD | Modifier::RAPID_BLINK))
+                .highlight_style(
+                    Style::default()
+                        .fg(HIGHLIGHT)
+                        .add_modifier(Modifier::BOLD | Modifier::RAPID_BLINK),
+                )
                 .highlight_symbol(">> ");
 
-            frame.render_stateful_widget(connections_list, content_layout[1], &mut app_state.ssh_connections_state);
+            frame.render_stateful_widget(
+                connections_list,
+                content_layout[1],
+                &mut app_state.ssh_connections_state,
+            );
         }
         Some(3) => {
             // Add Connection Form
@@ -395,7 +426,11 @@ fn ui(frame: &mut Frame, app_state: &mut AppState) {
                             .border_style(
                                 Style::default()
                                     .fg(if is_active { HIGHLIGHT } else { DARKER_GREEN })
-                                    .add_modifier(if is_active { Modifier::BOLD } else { Modifier::empty() })
+                                    .add_modifier(if is_active {
+                                        Modifier::BOLD
+                                    } else {
+                                        Modifier::empty()
+                                    }),
                             ),
                     );
 
