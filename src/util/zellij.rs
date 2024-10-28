@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
 
 pub fn handle_zellij(args: &[String]) -> std::io::Result<()> {
@@ -123,6 +122,7 @@ pub fn list_layouts() -> Result<Vec<String>, String> {
 
     Ok(layouts)
 }
+
 
 pub fn create_session(session_name: &str) -> Result<(), String> {
     let output = Command::new("zellij")
