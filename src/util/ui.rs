@@ -1,6 +1,6 @@
 use std::io::{self, stdout};
 
-use crate::util::ssh::{get_connections, handle_add_connection, handle_ssh};
+use crate::util::ssh::{get_connections, handle_add_connection, handle_ssh, handle_ssh_from_tui};
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -132,27 +132,13 @@ fn handle_events(app_state: &mut AppState) -> io::Result<bool> {
                                 }
                             } else if app_state.main_menu_state.selected() == Some(0) {
                                 // SSH connection is selected
-                                if let Some(selected_index) =
-                                    app_state.ssh_connections_state.selected()
-                                {
-                                    if let Some(selected_connection) =
-                                        app_state.ssh_connections.get(selected_index)
-                                    {
-                                        // Temporarily disable raw mode and leave alternate screen
-                                        disable_raw_mode()?;
-                                        stdout().execute(LeaveAlternateScreen)?;
-
-                                        // Connect to the selected SSH
-                                        if let Err(e) = handle_ssh(&[selected_connection.to_string()]) {
+                                if let Some(selected_index) = app_state.ssh_connections_state.selected() {
+                                    if let Some(selected_connection) = app_state.ssh_connections.get(selected_index) {
+                                        if let Err(e) = handle_ssh_from_tui(selected_connection) {
                                             eprintln!("Failed to connect: {}", e);
-                                            // Wait for user input before continuing
-                                            println!("Press any key to continue...");
-                                            let _ = std::io::stdin().read_line(&mut String::new());
                                         }
-
-                                        // Re-enable raw mode and enter alternate screen
-                                        enable_raw_mode()?;
-                                        stdout().execute(EnterAlternateScreen)?;
+                                        // Indicate that a full redraw is needed
+                                        return Ok(true);
                                     }
                                 }
                             }
