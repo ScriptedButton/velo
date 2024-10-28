@@ -11,8 +11,12 @@ use ratatui::{
     prelude::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, BorderType},
+    layout::{
+        Flex
+    },
     Frame, Terminal,
 };
+use ratatui::layout::Position;
 
 #[derive(Clone, PartialEq)]
 enum InputMode {
@@ -32,6 +36,7 @@ pub struct AppState {
 struct AddConnectionForm {
     fields: Vec<String>,
     current_field: usize,
+    cursor_positions: Vec<usize>, // Track cursor position for each field
 }
 
 impl AddConnectionForm {
@@ -39,6 +44,7 @@ impl AddConnectionForm {
         Self {
             fields: vec![String::new(); 3], // 3 fields: name, host, user
             current_field: 0,
+            cursor_positions: vec![0; 3], // Cursor position for each field
         }
     }
 
@@ -48,6 +54,49 @@ impl AddConnectionForm {
 
     fn prev_field(&mut self) {
         self.current_field = (self.current_field + self.fields.len() - 1) % self.fields.len();
+    }
+
+    fn move_cursor_left(&mut self) {
+        let current_cursor = &mut self.cursor_positions[self.current_field];
+        *current_cursor = current_cursor.saturating_sub(1);
+    }
+
+    fn move_cursor_right(&mut self) {
+        let field_len = self.fields[self.current_field].chars().count();
+        let current_cursor = &mut self.cursor_positions[self.current_field];
+        *current_cursor = (*current_cursor + 1).min(field_len);
+    }
+
+    fn enter_char(&mut self, c: char) {
+        let field = &mut self.fields[self.current_field];
+        let cursor_pos = self.cursor_positions[self.current_field];
+
+        // Convert cursor position to byte index
+        let byte_index = field
+            .char_indices()
+            .map(|(i, _)| i)
+            .nth(cursor_pos)
+            .unwrap_or(field.len());
+
+        field.insert(byte_index, c);
+        self.move_cursor_right();
+    }
+
+    fn delete_char(&mut self) {
+        let field = &mut self.fields[self.current_field];
+        let cursor_pos = &mut self.cursor_positions[self.current_field];
+
+        if *cursor_pos > 0 {
+            let from_left_to_current_index = *cursor_pos - 1;
+
+            // Getting all characters before and after the cursor
+            let before_char = field.chars().take(from_left_to_current_index);
+            let after_char = field.chars().skip(*cursor_pos);
+
+            // Combine all characters except the deleted one
+            *field = before_char.chain(after_char).collect();
+            self.move_cursor_left();
+        }
     }
 }
 
@@ -131,13 +180,11 @@ fn handle_events(app_state: &mut AppState) -> io::Result<bool> {
                                     _ => {}
                                 }
                             } else if app_state.main_menu_state.selected() == Some(0) {
-                                // SSH connection is selected
                                 if let Some(selected_index) = app_state.ssh_connections_state.selected() {
                                     if let Some(selected_connection) = app_state.ssh_connections.get(selected_index) {
                                         if let Err(e) = handle_ssh_from_tui(selected_connection) {
                                             eprintln!("Failed to connect: {}", e);
                                         }
-                                        // Indicate that a full redraw is needed
                                         return Ok(true);
                                     }
                                 }
@@ -148,12 +195,11 @@ fn handle_events(app_state: &mut AppState) -> io::Result<bool> {
                     InputMode::Editing => match key.code {
                         KeyCode::Esc => {
                             app_state.input_mode = InputMode::Normal;
-                            app_state.focused_section = app_state.focused_section - 1;
+                            app_state.focused_section = 0;
                         }
                         KeyCode::Enter => {
                             if app_state.add_connection_form.current_field == 2 {
-                                let args: Vec<String> =
-                                    app_state.add_connection_form.fields.clone();
+                                let args: Vec<String> = app_state.add_connection_form.fields.clone();
                                 if handle_add_connection(&args).is_ok() {
                                     app_state.ssh_connections = get_connections();
                                     app_state.input_mode = InputMode::Normal;
@@ -164,14 +210,16 @@ fn handle_events(app_state: &mut AppState) -> io::Result<bool> {
                             }
                         }
                         KeyCode::Backspace => {
-                            let current_field = &mut app_state.add_connection_form.fields
-                                [app_state.add_connection_form.current_field];
-                            current_field.pop();
+                            app_state.add_connection_form.delete_char();
                         }
                         KeyCode::Char(c) => {
-                            let current_field = &mut app_state.add_connection_form.fields
-                                [app_state.add_connection_form.current_field];
-                            current_field.push(c);
+                            app_state.add_connection_form.enter_char(c);
+                        }
+                        KeyCode::Left => {
+                            app_state.add_connection_form.move_cursor_left();
+                        }
+                        KeyCode::Right => {
+                            app_state.add_connection_form.move_cursor_right();
                         }
                         KeyCode::Tab | KeyCode::Down => {
                             app_state.add_connection_form.next_field();
@@ -201,32 +249,39 @@ fn ui(frame: &mut Frame, app_state: &mut AppState) {
         frame.area(),
     );
 
-    let layout = Layout::default()
+    // Main vertical layout with flex
+    let main_layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(vec![
-            Constraint::Length(1),
-            Constraint::Percentage(50),
-            Constraint::Percentage(50),
+        .flex(Flex::Start)
+        .constraints([
+            Constraint::Length(1),      // Title bar
+            Constraint::Min(10),        // Content area
         ])
         .split(frame.area());
 
+    // Title with matrix-like styling
+    let title = Paragraph::new("// VELO //")
+        .style(Style::default().fg(HIGHLIGHT).add_modifier(Modifier::BOLD | Modifier::SLOW_BLINK))
+        .alignment(Alignment::Center);
+    frame.render_widget(title, main_layout[0]);
+
+    // Content area split into two columns with flex
+    let content_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .flex(Flex::SpaceBetween)
+        .constraints([
+            Constraint::Percentage(30),  // Menu column
+            Constraint::Percentage(70),  // Details column
+        ])
+        .split(main_layout[1]);
+
+    // Main menu items
     let main_menu_items = vec![
         ListItem::new("[ SSH ]").style(Style::default().fg(NEON_GREEN)),
         ListItem::new("[ ZELLIJ ]").style(Style::default().fg(NEON_GREEN)),
         ListItem::new("[ ADD CONNECTION ]").style(Style::default().fg(NEON_GREEN)),
         ListItem::new("[ ADD KEY ]").style(Style::default().fg(NEON_GREEN)),
     ];
-
-    // Title with matrix-like styling
-    let title = Paragraph::new("// VELO //")
-        .style(
-            Style::default()
-                .fg(HIGHLIGHT)
-                .add_modifier(Modifier::BOLD | Modifier::SLOW_BLINK)
-        )
-        .alignment(Alignment::Center);
-
-    frame.render_widget(title, layout[0]);
 
     let main_menu_block = Block::new()
         .borders(Borders::ALL)
@@ -235,16 +290,8 @@ fn ui(frame: &mut Frame, app_state: &mut AppState) {
         .title_alignment(Alignment::Center)
         .border_style(
             Style::default()
-                .fg(if app_state.focused_section == 0 {
-                    HIGHLIGHT
-                } else {
-                    DARKER_GREEN
-                })
-                .add_modifier(if app_state.focused_section == 0 {
-                    Modifier::BOLD
-                } else {
-                    Modifier::empty()
-                }),
+                .fg(if app_state.focused_section == 0 { HIGHLIGHT } else { DARKER_GREEN })
+                .add_modifier(if app_state.focused_section == 0 { Modifier::BOLD } else { Modifier::empty() }),
         );
 
     let main_menu = List::new(main_menu_items)
@@ -256,30 +303,12 @@ fn ui(frame: &mut Frame, app_state: &mut AppState) {
                 .add_modifier(Modifier::BOLD | Modifier::RAPID_BLINK),
         );
 
-    frame.render_stateful_widget(main_menu, layout[1], &mut app_state.main_menu_state);
+    frame.render_stateful_widget(main_menu, content_layout[0], &mut app_state.main_menu_state);
 
-    let bottom_block = Block::new()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Double)
-        .title("[ DETAILS ]")
-        .title_alignment(Alignment::Center)
-        .border_style(
-            Style::default()
-                .fg(if app_state.focused_section == 1 {
-                    HIGHLIGHT
-                } else {
-                    DARKER_GREEN
-                })
-                .add_modifier(if app_state.focused_section == 1 {
-                    Modifier::BOLD
-                } else {
-                    Modifier::empty()
-                }),
-        );
-
+    // Details section with flex
     match app_state.main_menu_state.selected() {
         Some(0) => {
-            // SSH option with matrix-style decoration
+            // SSH Connections list
             let connections_block = Block::new()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Double)
@@ -287,96 +316,122 @@ fn ui(frame: &mut Frame, app_state: &mut AppState) {
                 .title_alignment(Alignment::Center)
                 .border_style(
                     Style::default()
-                        .fg(if app_state.focused_section == 1 {
-                            HIGHLIGHT
-                        } else {
-                            DARKER_GREEN
-                        })
-                        .add_modifier(if app_state.focused_section == 1 {
-                            Modifier::BOLD
-                        } else {
-                            Modifier::empty()
-                        }),
+                        .fg(if app_state.focused_section == 1 { HIGHLIGHT } else { DARKER_GREEN })
+                        .add_modifier(if app_state.focused_section == 1 { Modifier::BOLD } else { Modifier::empty() }),
                 );
 
             let connections: Vec<ListItem> = app_state
                 .ssh_connections
                 .iter()
-                .map(|c| {
-                    ListItem::new(format!("< {} >", c))
-                        .style(Style::default().fg(NEON_GREEN))
-                })
+                .map(|c| ListItem::new(format!("< {} >", c)).style(Style::default().fg(NEON_GREEN)))
                 .collect();
 
             let connections_list = List::new(connections)
                 .block(connections_block)
-                .highlight_style(
-                    Style::default()
-                        .fg(HIGHLIGHT)
-                        .add_modifier(Modifier::BOLD | Modifier::RAPID_BLINK),
-                )
+                .highlight_style(Style::default().fg(HIGHLIGHT).add_modifier(Modifier::BOLD | Modifier::RAPID_BLINK))
                 .highlight_symbol(">> ");
 
-            frame.render_stateful_widget(
-                connections_list,
-                layout[2],
-                &mut app_state.ssh_connections_state,
-            );
+            frame.render_stateful_widget(connections_list, content_layout[1], &mut app_state.ssh_connections_state);
         }
         Some(3) => {
-            // Add Connection Form with cyberpunk styling
-            let add_connection_layout = Layout::default()
+            // Add Connection Form
+            let form_block = Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Double)
+                .title("[ ADD_CONNECTION ]")
+                .title_alignment(Alignment::Center)
+                .border_style(Style::default().fg(DARKER_GREEN));
+
+            let inner_area = form_block.inner(content_layout[1]);
+            frame.render_widget(form_block, content_layout[1]);
+
+            // Form layout with flex
+            let form_layout = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints(vec![
-                    Constraint::Ratio(1, 3),
-                    Constraint::Ratio(1, 3),
-                    Constraint::Ratio(1, 3),
+                .flex(Flex::SpaceBetween)
+                .constraints([
+                    Constraint::Min(3),    // Form fields area
+                    Constraint::Length(1), // Helper text
                 ])
-                .split(layout[2]);
+                .split(inner_area);
+
+            // Form fields area with flex
+            let fields_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .flex(Flex::SpaceAround)
+                .constraints([
+                    Constraint::Length(3),
+                    Constraint::Length(3),
+                    Constraint::Length(3),
+                ])
+                .split(form_layout[0]);
 
             let field_names = ["[ NAME ]", "[ HOST ]", "[ USER ]"];
             for (i, field) in app_state.add_connection_form.fields.iter().enumerate() {
                 let is_active = app_state.input_mode == InputMode::Editing
                     && app_state.add_connection_form.current_field == i;
 
+                // Row layout with flex
+                let row = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .flex(Flex::Start)
+                    .constraints([
+                        Constraint::Length(15),
+                        Constraint::Min(30),
+                        Constraint::Length(2),
+                    ])
+                    .split(fields_layout[i]);
+
+                let label = Paragraph::new(field_names[i])
+                    .style(Style::default().fg(if is_active { HIGHLIGHT } else { DARKER_GREEN }))
+                    .alignment(Alignment::Right);
+
                 let input = Paragraph::new(field.as_str())
-                    .style(
-                        Style::default().fg(if is_active {
-                            HIGHLIGHT
-                        } else {
-                            NEON_GREEN
-                        }),
-                    )
+                    .style(Style::default().fg(if is_active { HIGHLIGHT } else { NEON_GREEN }))
                     .block(
                         Block::default()
                             .borders(Borders::ALL)
                             .border_type(BorderType::Double)
-                            .title(field_names[i])
                             .border_style(
                                 Style::default()
-                                    .fg(if is_active {
-                                        HIGHLIGHT
-                                    } else {
-                                        DARKER_GREEN
-                                    })
-                                    .add_modifier(if is_active {
-                                        Modifier::BOLD
-                                    } else {
-                                        Modifier::empty()
-                                    }),
+                                    .fg(if is_active { HIGHLIGHT } else { DARKER_GREEN })
+                                    .add_modifier(if is_active { Modifier::BOLD } else { Modifier::empty() })
                             ),
                     );
-                frame.render_widget(input, add_connection_layout[i]);
+
+                frame.render_widget(label, row[0]);
+                frame.render_widget(input, row[1]);
+
+                if is_active && app_state.input_mode == InputMode::Editing {
+                    frame.set_cursor_position(Position::new(
+                        row[1].x + app_state.add_connection_form.cursor_positions[i] as u16 + 1,
+                        row[1].y + 1,
+                    ));
+                }
             }
+
+            // Helper text
+            let helper_text = if app_state.input_mode == InputMode::Editing {
+                "[ TAB: next field | SHIFT+TAB: prev field | ENTER: submit | ESC: cancel ]"
+            } else {
+                "[ ENTER: start editing ]"
+            };
+
+            let helper = Paragraph::new(helper_text)
+                .style(Style::default().fg(DARKER_GREEN))
+                .alignment(Alignment::Center);
+            frame.render_widget(helper, form_layout[1]);
         }
         _ => {
             frame.render_widget(
-                Paragraph::new("")
-                    .block(bottom_block)
-                    .style(Style::default().fg(NEON_GREEN)),
-                layout[2],
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Double)
+                    .title("[ DETAILS ]")
+                    .title_alignment(Alignment::Center)
+                    .border_style(Style::default().fg(DARKER_GREEN)),
+                content_layout[1],
             );
         }
     }
 }
-
